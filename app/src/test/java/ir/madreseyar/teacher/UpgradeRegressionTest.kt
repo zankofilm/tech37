@@ -48,6 +48,18 @@ class UpgradeRegressionTest {
         assertEquals(1.5, draft.score, 0.0001)
     }
 
+    @Test fun imageBankQuestionMatchesVisualFilterEvenWhenAnswerFormatIsMcq() {
+        assertTrue(questionTypeMatchesFilter("image", "mcq", "image", "image"))
+        assertTrue(questionTypeMatchesFilter("mcq", "mcq", "image", "image"))
+        assertFalse(questionTypeMatchesFilter("image", "mcq", "", "mcq"))
+    }
+
+    @Test fun visualQuestionModeRequiresAnImageWithoutChangingAnswerFormat() {
+        assertTrue(questionImageIsRequired(visualQuestion = true, bankRequiresImage = false))
+        assertTrue(questionImageIsRequired(visualQuestion = false, bankRequiresImage = true))
+        assertFalse(questionImageIsRequired(visualQuestion = false, bankRequiresImage = false))
+    }
+
     @Test fun questionImageSourceReadsLegacyImageUrlFields() {
         val src = JSONObject().put("type", "image").put("imageUrl", "/student/media/question-images/q2.webp")
         assertEquals("/student/media/question-images/q2.webp", questionImageSource(src))

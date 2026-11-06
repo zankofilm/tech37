@@ -72,6 +72,7 @@ private fun questionTypeLabel(type: String) = when (type) {
     "true_false" -> "صحیح / غلط"
     "fill_blank" -> "جای خالی"
     "short_answer" -> "پاسخ کوتاه"
+    "image" -> "تصویری"
     else -> "سؤال"
 }
 
@@ -84,6 +85,10 @@ private fun bankTypeLabel(type: String) = when (type) {
     "image" -> "تصویری"
     else -> type
 }
+
+private fun examQuestionDisplayTypeLabel(question: ExamQuestionDraft): String =
+    if (question.visualType.equals("image", true)) "تصویری · ${questionTypeLabel(question.type)}"
+    else questionTypeLabel(question.type)
 
 private fun bankQuestionAllowed(question: JSONObject, examCategory: String, academicPeriod: String): Boolean {
     val scope = question.optString("assessmentScope", "shared").ifBlank { "shared" }
@@ -662,7 +667,7 @@ fun ExamStudioScreen(workspace: JSONObject?, initialBankQuestionId: String? = nu
                         Surface(Modifier.size(36.dp), RoundedCornerShape(12.dp), XBrand.copy(.1f)) { Box(contentAlignment = Alignment.Center) { Text("${index + 1}", fontWeight = FontWeight.Black, color = XBrandDark) } }
                         Spacer(Modifier.width(9.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(questionTypeLabel(q.type), color = XBrand, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(examQuestionDisplayTypeLabel(q), color = XBrand, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             Text(q.text, fontWeight = FontWeight.Bold, color = XText)
                             if (q.imageDataUrl.isNotBlank()) QuestionImagePreview(q.imageDataUrl)
                             Text("بارم ${formatScore(q.score)}", color = XMuted, fontSize = 11.sp)
@@ -920,7 +925,7 @@ private fun BankQuestionPickerDialog(
         (showExcluded || entry.key !in excluded) &&
             bankQuestionMatchesSearch(search, listOf(draft.text, draft.answerText, draft.explanation) + draft.choices) &&
             (chapterFilter.isBlank() || draft.chapterId == chapterFilter) &&
-            (typeFilter.isBlank() || draft.type == typeFilter) &&
+            questionTypeMatchesFilter(typeFilter, draft.type, draft.visualType, entry.source.optString("type")) &&
             (levelFilter.isBlank() || difficultyLabel(entry.source.optString("difficulty")) == levelFilter) &&
             when (statusFilter) {
                 "ready" -> issue.isBlank()
@@ -977,7 +982,7 @@ private fun BankQuestionPickerDialog(
                         Text("نوع سؤال", fontSize = 11.sp, color = XMuted)
                         androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             item { FilterChip(selected = typeFilter.isBlank(), onClick = { typeFilter = "" }, label = { Text("همه") }) }
-                            itemsIndexed(listOf("mcq", "true_false", "fill_blank", "short_answer", "descriptive")) { _, t ->
+                            itemsIndexed(listOf("mcq", "image", "true_false", "fill_blank", "short_answer", "descriptive")) { _, t ->
                                 FilterChip(selected = typeFilter == t, onClick = { typeFilter = t },
                                     label = { Text(questionTypeLabel(t)) })
                             }
@@ -1045,7 +1050,7 @@ private fun BankQuestionPickerDialog(
                                     )
                                     Column(Modifier.weight(1f)) {
                                         Text(draft.text.ifBlank { "متن سؤال ثبت نشده" }, color = XText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        Text("${questionTypeLabel(draft.type)} · ${difficultyLabel(entry.source.optString("difficulty"))} · ${formatScore(draft.score)} نمره", color = XMuted, fontSize = 11.sp)
+                                        Text("${examQuestionDisplayTypeLabel(draft)} · ${difficultyLabel(entry.source.optString("difficulty"))} · ${formatScore(draft.score)} نمره", color = XMuted, fontSize = 11.sp)
                                     }
                                     IconButton(onClick = { expandedKeys = if (expandable) expandedKeys - entry.key else expandedKeys + entry.key }) {
                                         Icon(if (expandable) Icons.Default.ExpandLess else Icons.Default.ExpandMore, "نمایش سؤال و پاسخ")
@@ -1174,7 +1179,7 @@ private fun QuickQuestionImportDialog(
                                 })
                                 Column(Modifier.weight(1f)) {
                                     Text("${i+1}. ${draft.text.take(145)}", fontSize = 12.sp, color = XText, fontWeight = FontWeight.Bold)
-                                    Text(if (row.issue.isNotBlank()) row.issue else "${questionTypeLabel(draft.type)} · ${formatScore(draft.score)} نمره", color = if (row.issue.isNotBlank()) Color(0xFFC64D4D) else XMuted, fontSize = 10.sp)
+                                    Text(if (row.issue.isNotBlank()) row.issue else "${examQuestionDisplayTypeLabel(draft)} · ${formatScore(draft.score)} نمره", color = if (row.issue.isNotBlank()) Color(0xFFC64D4D) else XMuted, fontSize = 10.sp)
                                     if (draft.type == "mcq" && row.issue.isBlank()) Text("کلید: ${listOf("الف", "ب", "ج", "د")[draft.answerIndex ?: 0]}", color = XSuccess, fontSize = 10.sp)
                                 }
                                 if (row.issue.isBlank()) IconButton(onClick = { editIndex = i }) { Icon(Icons.Default.Edit, "ویرایش سؤال", tint = XBrandDark) }
@@ -1289,7 +1294,7 @@ private fun ExamPreviewDialog(
                     Card(colors = CardDefaults.cardColors(Color.White)) {
                         Column(Modifier.fillMaxWidth().padding(10.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("سؤال ${index + 1} · ${questionTypeLabel(q.type)}", color = XBrand, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("سؤال ${index + 1} · ${examQuestionDisplayTypeLabel(q)}", color = XBrand, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Text("${formatScore(q.score)} نمره", color = XMuted, fontSize = 10.sp)
                             }
                             Text(q.text, color = XText, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -1326,6 +1331,9 @@ private fun QuestionEditorDialog(
     var boolAnswer by remember(initial) { mutableStateOf(initial?.boolAnswer ?: true) }
     var boolSelected by remember(initial) { mutableStateOf(initial?.type == "true_false" && initial.boolAnswerKnown) }
     var imageDataUrl by remember(initial) { mutableStateOf(initial?.imageDataUrl.orEmpty()) }
+    var visualQuestion by remember(initial, requireImage) {
+        mutableStateOf(requireImage || initial?.visualType.equals("image", true))
+    }
     var localError by remember { mutableStateOf("") }
     var imageLoading by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -1347,7 +1355,22 @@ private fun QuestionEditorDialog(
             LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 item {
                     Text("نوع سؤال", fontWeight = FontWeight.Bold)
-                    types.forEach { t -> FilterChip(selected = type == t, onClick = { type = t; localError = "" }, label = { Text(questionTypeLabel(t)) }) }
+                    types.forEach { t ->
+                        FilterChip(
+                            selected = type == t,
+                            onClick = { type = t; localError = "" },
+                            label = { Text(questionTypeLabel(t)) }
+                        )
+                    }
+                    FilterChip(
+                        selected = visualQuestion,
+                        onClick = { visualQuestion = if (requireImage) true else !visualQuestion; localError = "" },
+                        label = { Text("تصویری") },
+                        leadingIcon = { Icon(Icons.Default.AddPhotoAlternate, null, Modifier.size(16.dp)) }
+                    )
+                    if (visualQuestion || requireImage) {
+                        Text("این سؤال تصویری است؛ تصویر سؤال را اضافه کنید. قالب پاسخ (چهارگزینه‌ای، تشریحی و ...) جداگانه انتخاب می‌شود.", fontSize = 10.sp, color = XMuted)
+                    }
                     Spacer(Modifier.height(5.dp))
                     Text("فصل", fontWeight = FontWeight.Bold)
                     chapters.forEachIndexed { i, c ->
@@ -1393,7 +1416,7 @@ private fun QuestionEditorDialog(
                 localError = when {
                     chapters.isEmpty() -> "فصل آزمون مشخص نیست."
                     imageLoading -> "بارگذاری تصویر هنوز کامل نشده است."
-                    requireImage && imageDataUrl.isBlank() -> "برای این سؤال تصویری باید تصویر اضافه کنید."
+                    questionImageIsRequired(visualQuestion, requireImage) && imageDataUrl.isBlank() -> "برای این سؤال تصویری باید تصویر اضافه کنید."
                     text.trim().isEmpty() -> "متن سؤال را وارد کنید."
                     parsed == null || parsed <= 0.0 || parsed > 20.0 -> "بارم سؤال باید بیشتر از صفر و حداکثر ۲۰ باشد."
                     type == "mcq" && choices.any { it.trim().isEmpty() } -> "هر چهار گزینه را کامل کنید."
@@ -1420,7 +1443,7 @@ private fun QuestionEditorDialog(
                             sourceQuestionId = initial?.sourceQuestionId.orEmpty(),
                             sourceChapterId = initial?.sourceChapterId.orEmpty(),
                             explanation = initial?.explanation.orEmpty(),
-                            visualType = if (imageDataUrl.isNotBlank()) "image" else "",
+                            visualType = if (visualQuestion || requireImage) "image" else "",
                             imageDataUrl = imageDataUrl,
                         )
                     )

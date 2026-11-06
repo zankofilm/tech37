@@ -53,3 +53,16 @@ internal fun bankQuestionMatchesSearch(needle: String, fields: List<String>): Bo
     val term = normalizeBankSearch(needle)
     return term.isEmpty() || fields.any { normalizeBankSearch(it).contains(term) }
 }
+
+/** Match both the answer format and the visual format of a bank question.
+ * Image-based MCQs are stored as answer type `mcq` plus visual type `image`.
+ */
+internal fun questionTypeMatchesFilter(filter: String, draftType: String, visualType: String, sourceType: String): Boolean = when (filter) {
+    "" -> true
+    "image" -> visualType.equals("image", true) || sourceType.equals("image", true)
+    else -> draftType == filter
+}
+
+/** Image mode is a visual modifier; it does not replace the answer format. */
+internal fun questionImageIsRequired(visualQuestion: Boolean, bankRequiresImage: Boolean): Boolean =
+    visualQuestion || bankRequiresImage

@@ -31,8 +31,8 @@ android {
         applicationId = "ir.madreseyar.teacher"
         minSdk = 23
         targetSdk = 35
-        versionCode = 30
-        versionName = "4.1.2"
+        versionCode = 31
+        versionName = "4.1.3"
         buildConfigField("String", "WEB_APP_URL", "\"$escapedWebAppUrl\"")
         buildConfigField("String", "API_BASE_URL", "\"$escapedApiBaseUrl\"")
     }

@@ -12,6 +12,12 @@ fun main() {
     check(findContactForTarget(contacts, MessageTarget("", "علوم")) == null)
     val good = QuestionReviewMeta(text="کدام درست است؟",type="mcq",score=1.0,
         choices=listOf("الف","ب","ج","د"),answerIndex=2)
+    check(questionTypeMatchesFilter("image", "mcq", "image", "image"))
+    check(questionTypeMatchesFilter("mcq", "mcq", "image", "image"))
+    check(!questionTypeMatchesFilter("image", "mcq", "", "mcq"))
+    check(questionImageIsRequired(visualQuestion = true, bankRequiresImage = false))
+    check(questionImageIsRequired(visualQuestion = false, bankRequiresImage = true))
+    check(!questionImageIsRequired(visualQuestion = false, bankRequiresImage = false))
     check(questionReviewIssue(good).isEmpty())
     check(questionReviewIssue(good.copy(answerIndex=null)).contains("کلید"))
     check(questionReviewIssue(good.copy(choices=listOf("الف", "الف", "ج", "د"))).contains("تکراری"))
