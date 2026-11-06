@@ -1,0 +1,127 @@
+name: Build Madreseyar Teacher APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_app_url:
+        description: "HTTPS base path of Madreseyar (must include /app/)"
+        required: false
+        default: "https://scooljavanrood.ir/app/"
+        type: string
+  push:
+    branches: [ main ]
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build installable debug APK
+    runs-on: ubuntu-latest
+    env:
+      WEB_APP_URL: ${{ inputs.web_app_url || vars.WEB_APP_URL || 'https://scooljavanrood.ir/app/' }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Validate secure website URL
+        shell: bash
+        run: |
+          if [[ -z "$WEB_APP_URL" ]]; then
+            echo "WEB_APP_URL is missing."
+            exit 1
+          fi
+          if [[ "$WEB_APP_URL" != https://* ]]; then
+            echo "Only HTTPS URLs are allowed. HTTP would expose login credentials and session tokens."
+            exit 1
+          fi
+          echo "Direct API base: ${WEB_APP_URL%%\?*}"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      # Isolate the Kotlin task so a failed test/build cannot mask compiler diagnostics.
+      - name: Audit 26 menu routes and inert click handlers
+        run: python3 tools/ui_route_audit.py
+
+      - name: Compile Android Kotlin (capture compiler errors)
+        shell: bash
+        run: |
+          set -uo pipefail
+          gradle --no-daemon --console=plain --stacktrace --warning-mode=summary \
+            -PWEB_APP_URL="$WEB_APP_URL" :app:compileDebugKotlin \
+            2>&1 | tee "$RUNNER_TEMP/gradle-compile.log"
+          status=${PIPESTATUS[0]}
+          if (( status != 0 )); then
+            echo "::error title=Kotlin compilation failed::Open the diagnostic summary or download Madreseyar-Gradle-Logs to find the FIRST compiler error (file and line)."
+            {
+              echo '### Kotlin compiler diagnostics'
+              echo 'The first `e:` or `error:` line is normally the real cause; the final `Process completed with exit code 1` is not.'
+              echo '```text'
+              grep -nE '(^e: |(^|[[:space:]])error: |^> Task .*FAILED|^Execution failed|^FAILURE:)' "$RUNNER_TEMP/gradle-compile.log" | head -80 || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      - name: Run unit tests and build APK
+        shell: bash
+        run: |
+          set -uo pipefail
+          gradle --no-daemon --console=plain --stacktrace --warning-mode=summary \
+            -PWEB_APP_URL="$WEB_APP_URL" :app:testDebugUnitTest :app:assembleDebug \
+            2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
+          status=${PIPESTATUS[0]}
+          if (( status != 0 )); then
+            echo "::error title=Android tests or packaging failed::See the diagnostic log artifact."
+            {
+              echo '### Test/build diagnostics'
+              echo '```text'
+              grep -nE '(^e: |(^|[[:space:]])error: |^> Task .*FAILED|^Execution failed|^FAILURE:| FAILED$|^[[:space:]]*[0-9]+ tests completed, [0-9]+ failed)' "$RUNNER_TEMP/gradle-build.log" | head -80 || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      - name: Upload build diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Madreseyar-Gradle-Logs
+          path: |
+            ${{ runner.temp }}/gradle-compile.log
+            ${{ runner.temp }}/gradle-build.log
+            app/build/reports/tests/**
+            app/build/test-results/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Madreseyar-Teacher-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
